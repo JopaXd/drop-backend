@@ -1,4 +1,3 @@
-from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Response, status
 from fastapi.responses import HTMLResponse
 from datetime import datetime, timedelta

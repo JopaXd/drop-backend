@@ -1,9 +1,10 @@
 from fastapi import FastAPI, File, UploadFile, Response, status
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from datetime import datetime, timedelta
 from rethinkdb import RethinkDB
 from rethinkdb.errors import ReqlOpFailedError, ReqlDriverError, ReqlError
-import os, uuid, aiofiles, jobscheduler, shutil, logging, sys
+from cryptography.fernet import Fernet
+import os, uuid, aiofiles, jobscheduler, shutil, logging, sys, io
 
 #Configure logging
 drop_logger = logging.getLogger("drop")
@@ -24,6 +25,11 @@ DB_HOST = "localhost"
 DB_PORT = 28015
 DB_NAME = "drop"
 DB_TABLE = "files"
+
+#Encryption key
+
+key = Fernet.generate_key()
+encryptor = Fernet(key)
 
 #Making sure the correct database and table exist.
 try:
@@ -58,7 +64,7 @@ async def upload_file(response: Response, file: UploadFile = File(...)):
         try:
             async with aiofiles.open(fullFilePath := os.path.join(dirPath, file.filename), "wb") as out_file:
                 data = await file.read()
-                await out_file.write(data)
+                await out_file.write(encryptor.encrypt(data))
         except IOError:
             #When there is no disk space left.
             response.status_code = status.HTTP_507_INSUFFICIENT_STORAGE
@@ -85,4 +91,5 @@ async def get_file(response: Response, file_id: str):
         response.status_code = status.HTTP_404_NOT_FOUND
         return {"success": False, "error": "File not found or expired!"}
     response.status_code = status.HTTP_200_OK
-    return FileResponse(file_path)
+    data = open(file_path, "rb").read()
+    return StreamingResponse(io.BytesIO(encryptor.decrypt(data)))

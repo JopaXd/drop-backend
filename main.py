@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Response, status
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from datetime import datetime, timedelta
 from rethinkdb import RethinkDB
 from rethinkdb.errors import ReqlOpFailedError, ReqlDriverError, ReqlError
@@ -71,7 +71,7 @@ async def upload_file(response: Response, file: UploadFile = File(...)):
             return {"success" : False, "error" : "Service too busy (storage full), try again later."}
         await out_file.close()
         client.table(DB_TABLE).insert({"file_id": new_uuid, "file": fullFilePath}).run()
-        time_to_delete = datetime.now() + timedelta(minutes=1)
+        time_to_delete = datetime.now() + timedelta(hours=1)
         #We want to delete the whole directory where the file is stored, not just the file on its own.
         scheduler.schedule_job(delete_directory, [dirPath, new_uuid], time_to_delete, f"Delete {fullFilePath}.")
         response.status_code = status.HTTP_200_OK

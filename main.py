@@ -11,7 +11,7 @@ drop_logger = logging.getLogger("drop")
 drop_logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
-formatter = formatter = logging.Formatter('[%(levelname)s] - %(asctime)s - %(message)s', "%Y-%m-%d %H:%M:%S")
+formatter = logging.Formatter('[%(levelname)s] - %(asctime)s - %(message)s', "%Y-%m-%d %H:%M:%S")
 ch.setFormatter(formatter)
 drop_logger.addHandler(ch)
 
@@ -26,27 +26,12 @@ DB_PORT = 28015
 DB_NAME = "drop"
 DB_TABLE = "files"
 
-#Encryption key
-
+#Setting up encryption.
 key = Fernet.generate_key()
 encryptor = Fernet(key)
 
-#Making sure the correct database and table exist.
-try:
-    conn = client.connect(host=DB_HOST, port=DB_PORT, db=DB_NAME).repl()
-    client.db_create(DB_NAME).run()
-    #If db_create executed successfully, that means the database is new, therefore create the table as well.
-    client.table_create(DB_TABLE).run()
-except ReqlOpFailedError:
-    drop_logger.info("Drop database already created, skipping...");
-    pass 
-except ReqlDriverError:
-    #Meaning the client failed to connect, exit.
-    drop_logger.critical("Failed to connect to rethinkdb! Exiting...");
-    sys.exit()
-
-if not os.path.exists("./uploaded_files"):
-    os.mkdir("./uploaded_files")
+#Database connection, the job scheduler uses this since its using it from another thread, therefore specifying the connection is necessary.
+conn = client.connect(host=DB_HOST, port=DB_PORT, db=DB_NAME).repl()
 
 def delete_directory(path, file_id):
     shutil.rmtree(path)
@@ -55,6 +40,28 @@ def delete_directory(path, file_id):
     except ReqlError as e:
         print(e)
         drop_logger.error(f"Error deleting row with the file_id of {file_id}")
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        
+        client.db_create(DB_NAME).run()
+        #If db_create executed successfully, that means the database is new, therefore create the table as well.
+        client.table_create(DB_TABLE).run()
+    except ReqlOpFailedError:
+        drop_logger.info("Drop database already created, skipping...");
+        pass 
+    except ReqlDriverError:
+        #Meaning the client failed to connect, exit.
+        drop_logger.critical("Failed to connect to rethinkdb! Exiting...");
+        sys.exit()
+
+    if not os.path.exists("./uploaded_files"):
+        os.mkdir("./uploaded_files")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.close_scheduler()
 
 @app.post("/uploadfile/")
 async def upload_file(response: Response, file: UploadFile = File(...)):
@@ -92,4 +99,7 @@ async def get_file(response: Response, file_id: str):
         return {"success": False, "error": "File not found or expired!"}
     response.status_code = status.HTTP_200_OK
     data = open(file_path, "rb").read()
-    return StreamingResponse(io.BytesIO(encryptor.decrypt(data)))
+    file_name = file_path.split("\\")[-1]
+    response = StreamingResponse(io.BytesIO(encryptor.decrypt(data)))
+    response.headers["Content-Disposition"] = f"attachment; filename={file_name}"
+    return response

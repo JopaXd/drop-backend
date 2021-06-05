@@ -86,7 +86,7 @@ async def upload_file(response: Response, file: UploadFile = File(...)):
     except Exception as e:
         drop_logger.error(e)
         response.status_code = status.HTTP_400_BAD_REQUEST
-        return {"success" : False}
+        return {"success" : False, "error": "Unknown error!"}
 
 @app.get("/file/{file_id}")
 async def get_file(response: Response, file_id: str):

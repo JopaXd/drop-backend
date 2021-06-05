@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Response, status
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, PlainTextResponse
 from datetime import datetime, timedelta
 from rethinkdb import RethinkDB
 from rethinkdb.errors import ReqlOpFailedError, ReqlDriverError, ReqlError
@@ -82,7 +82,7 @@ async def upload_file(response: Response, file: UploadFile = File(...)):
         #We want to delete the whole directory where the file is stored, not just the file on its own.
         scheduler.schedule_job(delete_directory, [dirPath, new_uuid], time_to_delete, f"Delete {fullFilePath}.")
         response.status_code = status.HTTP_200_OK
-        return {"success": True}
+        return {"success": True, "file_id": new_uuid}
     except Exception as e:
         drop_logger.error(e)
         response.status_code = status.HTTP_400_BAD_REQUEST
@@ -96,7 +96,7 @@ async def get_file(response: Response, file_id: str):
     except IndexError:
         #Meaning there is no document with that id.
         response.status_code = status.HTTP_404_NOT_FOUND
-        return {"success": False, "error": "File not found or expired!"}
+        return PlainTextResponse("File not found or expired!")
     response.status_code = status.HTTP_200_OK
     data = open(file_path, "rb").read()
     file_name = file_path.split("\\")[-1]
